@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Deadline Sentinel architecture</title>
+  <desc id="desc">Live rules and artifact evidence pass through deterministic truth gates, then a Gemini and Google ADK agent prioritizes actions. Cloud Run executes the service, Cloud Scheduler triggers checks, Firestore preserves state, and a human approves final submission.</desc>
+  <defs>
+    <style>
+      .bg{fill:#f5f0e6}.ink{fill:#102720}.green{fill:#19785f}.mint{fill:#dceee5}.orange{fill:#e78645}.white{fill:#fffdf8}.line{stroke:#102720;stroke-width:3;fill:none}.dash{stroke:#19785f;stroke-width:3;fill:none;stroke-dasharray:10 10}.k{font:700 22px 'Arial',sans-serif;letter-spacing:3px}.h{font:700 56px Georgia,serif}.t{font:700 28px 'Arial',sans-serif}.s{font:400 20px 'Arial',sans-serif}.tiny{font:700 17px 'Arial',sans-serif;letter-spacing:1px}.muted{fill:#5f746c}
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" class="ink"/></marker>
+  </defs>
+  <rect width="1600" height="900" class="bg"/>
+  <rect x="44" y="42" width="1512" height="816" rx="34" class="white" stroke="#102720" stroke-opacity=".15" stroke-width="2"/>
+  <text x="100" y="115" class="k green">DEADLINE SENTINEL · GOOGLE CLOUD</text>
+  <text x="100" y="184" class="h ink">Flexible planning. Deterministic truth.</text>
+  <text x="100" y="226" class="s muted">The model navigates the work. Reviewable code decides whether evidence exists.</text>
+
+  <rect x="100" y="324" width="235" height="132" rx="22" class="white" stroke="#102720" stroke-width="3"/>
+  <text x="130" y="371" class="t ink">Live rules</text>
+  <text x="130" y="407" class="s muted">Deadlines · criteria</text>
+  <text x="130" y="435" class="s muted">Policy changes</text>
+
+  <rect x="100" y="498" width="235" height="132" rx="22" class="white" stroke="#102720" stroke-width="3"/>
+  <text x="130" y="545" class="t ink">Artifacts</text>
+  <text x="130" y="581" class="s muted">Links · files</text>
+  <text x="130" y="609" class="s muted">Approval evidence</text>
+
+  <path d="M335 390 H430 V455" class="line" marker-end="url(#arrow)"/>
+  <path d="M335 564 H430 V495" class="line" marker-end="url(#arrow)"/>
+
+  <rect x="440" y="354" width="280" height="246" rx="26" class="mint" stroke="#19785f" stroke-width="4"/>
+  <text x="480" y="413" class="tiny green">REPRODUCIBLE LAYER</text>
+  <text x="480" y="466" class="t ink">Truth gates</text>
+  <text x="480" y="510" class="s ink">URL + evidence checks</text>
+  <text x="480" y="544" class="s ink">Deadline calculation</text>
+  <text x="480" y="578" class="s ink">Fail-closed status</text>
+
+  <path d="M720 477 H800" class="line" marker-end="url(#arrow)"/>
+
+  <rect x="810" y="354" width="290" height="246" rx="26" class="ink"/>
+  <text x="850" y="413" class="tiny" fill="#7bd0b3">FLEXIBLE LAYER</text>
+  <text x="850" y="466" class="t white">Gemini 3.5</text>
+  <text x="850" y="502" class="t white">+ Google ADK</text>
+  <text x="850" y="546" class="s" fill="#cad8d3">Prioritize · route</text>
+  <text x="850" y="578" class="s" fill="#cad8d3">Explain · escalate</text>
+
+  <path d="M1100 477 H1178" class="line" marker-end="url(#arrow)"/>
+
+  <rect x="1188" y="354" width="280" height="246" rx="26" class="white" stroke="#102720" stroke-width="3"/>
+  <text x="1228" y="413" class="tiny orange">CONTROLLED ACTION</text>
+  <text x="1228" y="466" class="t ink">Action queue</text>
+  <text x="1228" y="510" class="s ink">Notify owners</text>
+  <text x="1228" y="544" class="s ink">Open approval gate</text>
+  <text x="1228" y="578" class="s ink">Never auto-submit</text>
+
+  <rect x="340" y="700" width="920" height="86" rx="22" class="ink"/>
+  <text x="390" y="752" class="tiny" fill="#7bd0b3">GOOGLE CLOUD RUN</text>
+  <text x="640" y="752" class="s white">Cloud Scheduler triggers audits</text>
+  <text x="1010" y="752" class="s white">Firestore preserves state</text>
+  <path d="M800 700 V620" class="dash" marker-end="url(#arrow)"/>
+
+  <rect x="1294" y="697" width="174" height="92" rx="46" class="orange"/>
+  <text x="1381" y="735" text-anchor="middle" class="tiny ink">HUMAN</text>
+  <text x="1381" y="764" text-anchor="middle" class="s ink">Final approval</text>
+  <path d="M1381 697 V620" class="dash" marker-end="url(#arrow)"/>
+</svg>

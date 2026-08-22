@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#081c18" />
+    <meta name="description" content="Deadline Sentinel turns live submission rules and artifacts into a verified action plan." />
+    <title>Deadline Sentinel — Finish with proof</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="Deadline Sentinel home">
+        <span class="brand-mark" aria-hidden="true">D</span>
+        <span>Deadline Sentinel</span>
+      </a>
+      <a class="text-link" href="https://github.com/ruma19076/deadline-sentinel" target="_blank" rel="noreferrer">Source ↗</a>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <p class="eyebrow">Autonomous submission operations</p>
+        <h1>Finish with proof.<br /><em>Not panic.</em></h1>
+        <p class="hero-copy">An agent that watches deadlines, verifies every required artifact, and escalates only the decisions that need a human.</p>
+        <div class="hero-actions">
+          <button class="button button-primary" id="run-audit">Run live audit <span>→</span></button>
+          <a class="button button-secondary" href="#architecture">See how it works</a>
+        </div>
+        <p class="trust-line"><span></span> Synthetic demo · no sign-in · evidence is never invented</p>
+      </section>
+
+      <section class="dashboard" aria-live="polite">
+        <div class="dashboard-head">
+          <div>
+            <p class="eyebrow">Submission control room</p>
+            <h2 id="submission-name">Loading audit…</h2>
+          </div>
+          <div class="deadline"><span id="hours">—</span><small>hours left</small></div>
+        </div>
+
+        <div class="status-card">
+          <div class="score-ring" id="score-ring"><strong id="confidence">—</strong><span>verified</span></div>
+          <div>
+            <p class="status-label">CURRENT STATE</p>
+            <h3 id="state">Checking evidence</h3>
+            <p id="summary">Running deterministic gates before the agent prioritizes work.</p>
+          </div>
+        </div>
+
+        <div class="metrics">
+          <div><strong id="ready-count">—</strong><span>READY</span></div>
+          <div><strong id="review-count">—</strong><span>REVIEW</span></div>
+          <div><strong id="missing-count">—</strong><span>MISSING</span></div>
+          <div><strong id="total-count">—</strong><span>TOTAL</span></div>
+        </div>
+
+        <div class="split-grid">
+          <article class="panel">
+            <div class="panel-heading"><h3>Requirement map</h3><span>Deterministic</span></div>
+            <div id="artifact-list" class="artifact-list"></div>
+          </article>
+          <article class="panel actions-panel">
+            <div class="panel-heading"><h3>Agent action queue</h3><span>Gemini + ADK</span></div>
+            <ol id="action-list" class="action-list"></ol>
+            <div class="approval-gate"><span>Human gate</span><p>Deadline Sentinel prepares the package. You approve the final submission.</p></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="architecture" id="architecture">
+        <p class="eyebrow">Flexible planning. Deterministic truth.</p>
+        <h2>The model navigates.<br />Code decides what is true.</h2>
+        <div class="flow" role="img" aria-label="Rules and artifacts flow into deterministic gates, then Gemini ADK prioritizes actions, followed by human approval">
+          <div><strong>Live rules</strong><span>Deadlines & criteria</span></div>
+          <i>+</i>
+          <div><strong>Artifacts</strong><span>Links & evidence</span></div>
+          <b>→</b>
+          <div class="flow-accent"><strong>Truth gates</strong><span>Reproducible checks</span></div>
+          <b>→</b>
+          <div><strong>ADK agent</strong><span>Priority & routing</span></div>
+          <b>→</b>
+          <div><strong>Human</strong><span>Final approval</span></div>
+        </div>
+      </section>
+    </main>
+
+    <footer><span>Deadline Sentinel</span><span>Built for All Things Agentic Hackathon 2026</span></footer>
+    <script src="/assets/app.js" defer></script>
+  </body>
+</html>
