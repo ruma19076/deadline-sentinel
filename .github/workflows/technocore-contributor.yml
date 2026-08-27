@@ -1,0 +1,58 @@
+name: Technocore safe contributor
+
+on:
+  schedule:
+    # 06:17 JST every Monday and Thursday. The uneven minute avoids the top-of-hour surge.
+    - cron: "17 21 * * 0,3"
+  workflow_dispatch:
+    inputs:
+      live_post:
+        description: "Post the signed snapshot (false runs a read-only probe)"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: technocore-safe-contributor
+  cancel-in-progress: true
+
+jobs:
+  contribute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the pinned repository revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Verify safety gates
+        run: node --test technocore_guard/agent.test.mjs
+
+      - name: Run read-only representative probe
+        if: github.event_name == 'workflow_dispatch' && inputs.live_post != true
+        run: node technocore_guard/agent.mjs probe
+
+      - name: Publish one signed conformance snapshot
+        if: github.event_name == 'schedule' || inputs.live_post == true
+        env:
+          TECHNOCORE_ENABLED: ${{ vars.TECHNOCORE_ENABLED }}
+          TECHNOCORE_SIGN_SEED: ${{ secrets.TECHNOCORE_SIGN_SEED }}
+        run: |
+          if [ "$TECHNOCORE_ENABLED" != "true" ]; then
+            echo "Kill switch is off; no post was made."
+            exit 0
+          fi
+          if ! printf '%s' "$TECHNOCORE_SIGN_SEED" | grep -Eq '^[0-9A-Fa-f]{64}$'; then
+            echo "TECHNOCORE_SIGN_SEED is missing or invalid; no post was made."
+            exit 1
+          fi
+          echo "::add-mask::$TECHNOCORE_SIGN_SEED"
+          node technocore_guard/agent.mjs contribute
+
