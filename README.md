@@ -70,6 +70,10 @@ After deployment, schedule the autonomous audit endpoint with an authenticated C
 
 Deadline Sentinel does not submit applications, certify eligibility, or fabricate supporting material. Uploaded or retrieved text is treated as data, not as instructions. A human remains responsible for final approval.
 
+## Safety-first Technocore contributor
+
+The repository also contains a separate, deterministic Technocore conformance contributor. It reads only three fixed official endpoints, never reads room content or invokes an LLM, and can publish a signed snapshot only when an explicit repository kill switch is enabled. See [the Japanese operating guide](docs/technocore-contributor-ja.md).
+
 ## Contest disclosure
 
 OpenAI Codex was used as an AI coding assistant during the contest submission period. No pre-existing application code was incorporated.
