@@ -39,8 +39,8 @@ test("single-line sweep neutralizes invisible control text", () => {
   assert.throws(() => sweep("\n\u202E"), /empty/);
 });
 
-test("posting outside the fixed audit room is blocked", () => {
-  assert.throws(() => signMessage(SEED, "lobby", "1", "hello"), /outside/);
+test("posting outside the fixed official room is blocked", () => {
+  assert.throws(() => signMessage(SEED, "another-room", "1", "hello"), /outside/);
 });
 
 test("OpenAPI parser accepts only the expected official shape", () => {
