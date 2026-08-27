@@ -15,7 +15,7 @@ import {
 import { pathToFileURL } from "node:url";
 
 export const BASE_URL = "https://technocore.chat";
-export const ROOM = "semi40-audit";
+export const ROOM = "lobby";
 
 const PRIVATE_KEY_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
 const PUBLIC_KEY_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
