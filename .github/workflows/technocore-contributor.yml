@@ -2,8 +2,8 @@ name: Technocore safe contributor
 
 on:
   schedule:
-    # 06:17 JST every Monday and Thursday. The uneven minute avoids the top-of-hour surge.
-    - cron: "17 21 * * 0,3"
+    # 06:17 JST daily. One useful signed snapshot per day avoids bursty or spam-like activity.
+    - cron: "17 21 * * *"
   workflow_dispatch:
     inputs:
       live_post:
@@ -55,4 +55,3 @@ jobs:
           fi
           echo "::add-mask::$TECHNOCORE_SIGN_SEED"
           node technocore_guard/agent.mjs contribute
-
