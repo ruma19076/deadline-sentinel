@@ -179,6 +179,65 @@ async function discardBody(response) {
   }
 }
 
+function classifyRefusalText(rawText) {
+  const text = rawText.toLowerCase();
+  if (text.includes("nonce")) return "nonce rejected";
+  if (text.includes("bad did:key") || text.includes("malformed did")) return "DID encoding rejected";
+  if (text.includes("bad signature encoding")) return "signature encoding rejected";
+  if (text.includes("signature does not") || text.includes("signature did not")) {
+    return "signature verification rejected";
+  }
+  if (text.includes("room storage is full") || text.includes("room limit")) {
+    return "room capacity rejected";
+  }
+  if (text.includes("body must be json") || text.includes("body must be a json")) {
+    return "JSON body rejected";
+  }
+  if (text.includes("text") && (text.includes("empty") || text.includes("character cap"))) {
+    return "message validation rejected";
+  }
+  return "unclassified server refusal";
+}
+
+async function classifyRefusal(response, maxBytes = 2048) {
+  const contentType = response.headers.get("content-type") || "";
+  const server = response.headers.get("server") || "";
+  if (!contentType.toLowerCase().includes("text/plain")) {
+    await discardBody(response);
+    return server.toLowerCase().includes("cloudflare")
+      ? "edge/proxy rejected request"
+      : "non-text upstream refusal";
+  }
+  if (!response.body || typeof response.body.getReader !== "function") {
+    await discardBody(response);
+    return "refusal details unavailable";
+  }
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (total < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const bytes = value.subarray(0, maxBytes - total);
+      chunks.push(bytes);
+      total += bytes.length;
+      if (bytes.length < value.length) break;
+    }
+  } catch {
+    return "refusal details unavailable";
+  } finally {
+    try {
+      await reader.cancel();
+    } catch {
+      // The bounded diagnostic is already complete.
+    }
+  }
+  const diagnostic = Buffer.concat(chunks.map((item) => Buffer.from(item))).toString("utf8");
+  return classifyRefusalText(diagnostic);
+}
+
 export async function postContribution(seedHex, text, fetchImpl = fetch, now = () => Date.now()) {
   let nonce = String(now());
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -202,8 +261,11 @@ export async function postContribution(seedHex, text, fetchImpl = fetch, now = (
       nonce = String(Math.max(Number(nonce) + 1, now()));
       continue;
     }
-    await discardBody(response);
-    fail(`signed post was refused with HTTP ${response.status}; no automatic content retry`);
+    const classification = await classifyRefusal(response);
+    fail(
+      `signed post was refused with HTTP ${response.status} (${classification}); ` +
+        "no automatic content retry",
+    );
   }
   fail("signed post did not complete");
 }
@@ -235,4 +297,3 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exitCode = 1;
   });
 }
-
