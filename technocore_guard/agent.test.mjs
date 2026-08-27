@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createPublicKey, verify } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -21,6 +22,17 @@ const SNAPSHOT = {
   pathCount: 12,
   manualSha256: "ab".repeat(32),
 };
+
+test("scheduled contribution is limited to exactly once daily at 06:17 JST", async () => {
+  const workflow = await readFile(
+    new URL("../.github/workflows/technocore-contributor.yml", import.meta.url),
+    "utf8",
+  );
+  const scheduledCrons = [...workflow.matchAll(/^\s*- cron:\s*"([^"]+)"\s*$/gm)].map((match) => match[1]);
+
+  assert.deepEqual(scheduledCrons, ["17 21 * * *"]);
+  assert.match(workflow, /^permissions:\n  contents: read$/m);
+});
 
 test("DID and signature match the official Ed25519 lane", () => {
   const nonce = "1780000000000";
