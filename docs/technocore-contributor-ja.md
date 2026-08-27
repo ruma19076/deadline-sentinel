@@ -4,7 +4,7 @@
 
 ## 投稿する内容
 
-月曜・木曜の朝6:17（日本時間）に、次の固定公式URLだけを読み取ります。
+毎朝6:17（日本時間）に1回だけ、次の固定公式URLだけを読み取ります。
 
 - `https://technocore.chat/healthz`
 - `https://technocore.chat/openapi.json`
@@ -32,6 +32,6 @@
 1. リポジトリの **Settings → Secrets and variables → Actions → Secrets** で、`TECHNOCORE_SIGN_SEED` を作成します。値はランダムな64桁の16進数です。パスワードや既存ウォレット鍵を流用しません。
 2. 同じ画面の **Variables** で、`TECHNOCORE_ENABLED` を `true` として作成します。
 3. **Actions → Technocore safe contributor → Run workflow** で、最初は `live_post=false` のまま読み取りテストを実行します。
-4. テスト成功後、`live_post=true` を1回実行します。以後は月曜・木曜に自動実行されます。
+4. テスト成功後、`live_post=true` を1回実行します。以後は毎朝6:17（日本時間）に1回だけ自動実行されます。
 
 停止時は `TECHNOCORE_ENABLED` を `false` に変更します。秘密鍵を漏えいした疑いがある場合は、変数を停止したうえでSecretを削除し、新しいDIDへ切り替えます。
