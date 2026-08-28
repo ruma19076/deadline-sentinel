@@ -385,12 +385,13 @@ export async function postContribution(
 export async function refreshDidProfile(did, proof, fetchImpl = fetch, now = new Date()) {
   const { namespace, key } = didNoteLocation(did);
   const value = buildDidProfile(did, proof, now);
-  const response = await fetchImpl(`${BASE_URL}/kv/${namespace}/${key}`, {
-    method: "POST",
+  const encoded = encodeURIComponent(value);
+  if (encoded.length > 12_000) fail("DID profile note exceeds the safe URL budget");
+  const response = await fetchImpl(`${BASE_URL}/kv/${namespace}/${key}/set/${encoded}`, {
+    method: "GET",
     redirect: "error",
-    headers: { "content-type": "application/json", accept: "text/plain" },
-    body: JSON.stringify({ value }),
-    signal: AbortSignal.timeout(12_000),
+    headers: { accept: "text/plain" },
+    signal: AbortSignal.timeout(30_000),
   });
   if (response.status !== 200) {
     await discardBody(response);
