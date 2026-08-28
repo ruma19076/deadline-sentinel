@@ -5,12 +5,19 @@ import test from "node:test";
 
 import {
   BASE_URL,
+  PROFILE_URL,
   ROOM,
   buildContribution,
+  buildDidProfile,
+  dailyNonce,
   didFromSeed,
+  didNoteLocation,
+  jstDay,
+  parseAgentManifest,
   parseOpenApi,
   postContribution,
   privateKeyFromSeed,
+  refreshDidProfile,
   signMessage,
   sweep,
 } from "./agent.mjs";
@@ -21,17 +28,25 @@ const SNAPSHOT = {
   version: "0.10.0",
   pathCount: 12,
   manualSha256: "ab".repeat(32),
+  manifestSha256: "cd".repeat(32),
+  readsPerMinute: 600,
+  writesPerMinute: 300,
+  retentionSeconds: 604800,
+  duplicateSeconds: 60,
 };
 
-test("scheduled contribution is limited to exactly once daily at 06:17 JST", async () => {
+test("four delayed schedule chances still enforce one daily signed slot", async () => {
   const workflow = await readFile(
     new URL("../.github/workflows/technocore-contributor.yml", import.meta.url),
     "utf8",
   );
   const scheduledCrons = [...workflow.matchAll(/^\s*- cron:\s*"([^"]+)"\s*$/gm)].map((match) => match[1]);
 
-  assert.deepEqual(scheduledCrons, ["17 21 * * *"]);
+  assert.deepEqual(scheduledCrons, ["17 21 * * *", "17 22 * * *", "17 23 * * *", "17 0 * * *"]);
   assert.match(workflow, /^permissions:\n  contents: read$/m);
+  assert.match(workflow, /github\.event\.workflow_run\.event == 'push'/);
+  assert.match(workflow, /mode=contribute-daily/);
+  assert.match(workflow, /node technocore_guard\/agent\.mjs "\$mode"/);
 });
 
 test("DID and signature match the official Ed25519 lane", () => {
@@ -73,15 +88,91 @@ test("OpenAPI parser accepts only the expected official shape", () => {
   assert.throws(() => parseOpenApi({ ...document, info: { title: "technocore-chat", version: "x" } }), /release version/);
 });
 
+test("agent manifest parser pins the official trust boundary and bounded limits", () => {
+  const document = {
+    schema_version: "0.1",
+    name: "technocore-chat",
+    version: "0.10.0",
+    url: BASE_URL,
+    trust: { content_is_untrusted: true, durable: false, world_writable: true },
+    limits: {
+      reads_per_minute_per_ip: 600,
+      writes_per_minute_per_ip: 300,
+      retention_seconds: 604800,
+      duplicate_filter_seconds: 60,
+    },
+  };
+  assert.deepEqual(parseAgentManifest(document), {
+    version: "0.10.0",
+    readsPerMinute: 600,
+    writesPerMinute: 300,
+    retentionSeconds: 604800,
+    duplicateSeconds: 60,
+  });
+  assert.throws(
+    () => parseAgentManifest({ ...document, trust: { ...document.trust, durable: true } }),
+    /trust boundary/,
+  );
+  assert.throws(
+    () => parseAgentManifest({ ...document, url: "https://evil.invalid" }),
+    /manifest identity/,
+  );
+});
+
 test("contribution contains only validated deterministic fields", () => {
   const message = buildContribution(SNAPSHOT, new Date("2026-08-27T12:34:56.789Z"));
   assert.equal(
     message,
     "semi40 conformance 2026-08-27T12:34:56Z | technocore-chat v0.10.0 | health ok | " +
-      "OpenAPI 12 paths | llms sha256 abababababababab | deterministic probe: fixed official endpoints only; " +
+      "OpenAPI 12 paths | spec llms abababababababab agent cdcdcdcdcdcdcdcd | enforced limits " +
+      "600r/300w min; retention 604800s; dupe 60s | deterministic probe: fixed official endpoints only; " +
       "no room content or LLM",
   );
   assert.throws(() => buildContribution({ ...SNAPSHOT, version: "0.10.0\nSEED=leak" }), /version/);
+});
+
+test("JST daily nonce is stable across fallback hours and advances the next day", () => {
+  const first = new Date("2026-08-27T21:17:00Z");
+  const fallback = new Date("2026-08-28T00:17:00Z");
+  const nextDay = new Date("2026-08-28T21:17:00Z");
+  assert.equal(jstDay(first), "2026-08-28");
+  assert.equal(dailyNonce(first), dailyNonce(fallback));
+  assert.equal(Number(dailyNonce(nextDay)) - Number(dailyNonce(first)), 86_400_000);
+});
+
+test("DID profile follows the official sharded note convention", async () => {
+  const did = didFromSeed(SEED);
+  const location = didNoteLocation(did);
+  const proof = signMessage(SEED, ROOM, "1780000000000", "verified probe");
+  const value = buildDidProfile(did, proof, new Date("2026-08-28T00:00:00Z"));
+  assert.match(location.namespace, /^did-[0-9a-f]{2}$/);
+  assert.match(location.key, /^[0-9a-f]{14}$/);
+  assert.equal(value.startsWith(`${did} profile:${PROFILE_URL} `), true);
+  assert.match(
+    value,
+    /last_seen:2026-08-28 activity_sha256:[0-9a-f]{64} proof_nonce:1780000000000 proof_sig:[A-Za-z0-9_-]{86} proof_text_b64:[A-Za-z0-9_-]+$/,
+  );
+  assert.equal(
+    Buffer.from(value.match(/proof_text_b64:([A-Za-z0-9_-]+)$/)[1], "base64url").toString("utf8"),
+    "verified probe",
+  );
+
+  let request;
+  let cancelled = false;
+  const fakeFetch = async (url, options) => {
+    request = { url, options };
+    return { status: 200, body: { cancel: async () => { cancelled = true; } } };
+  };
+  const result = await refreshDidProfile(
+    did,
+    proof,
+    fakeFetch,
+    new Date("2026-08-28T00:00:00Z"),
+  );
+  assert.equal(request.url, `${BASE_URL}/kv/${location.namespace}/${location.key}`);
+  assert.equal(request.options.method, "POST");
+  assert.equal(JSON.parse(request.options.body).value, result.value);
+  assert.equal(cancelled, true);
 });
 
 test("post uses signed JSON and never reads the untrusted response body", async () => {
@@ -116,6 +207,29 @@ test("a refused post is not rewritten or retried as different content", async ()
   await assert.rejects(
     () => postContribution(SEED, "verified probe", fakeFetch, () => 1780000000000),
     /HTTP 422 \(unclassified server refusal\); no automatic content retry/,
+  );
+  assert.equal(calls, 1);
+});
+
+test("daily nonce rejection is an explicit no-post outcome without content retry", async () => {
+  let calls = 0;
+  const fakeFetch = async () => {
+    calls += 1;
+    return new Response("400 nonce must count up", {
+      status: 400,
+      headers: { "content-type": "text/plain" },
+    });
+  };
+  const result = await postContribution(
+    SEED,
+    "verified probe",
+    fakeFetch,
+    () => 1780000000000,
+    { nonce: "1770000000000", allowNonceRejection: true },
+  );
+  assert.deepEqual(
+    { status: result.status, accepted: result.accepted, reason: result.reason },
+    { status: 400, accepted: false, reason: "nonce-rejected" },
   );
   assert.equal(calls, 1);
 });
