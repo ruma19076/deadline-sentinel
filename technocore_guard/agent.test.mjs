@@ -169,9 +169,11 @@ test("DID profile follows the official sharded note convention", async () => {
     fakeFetch,
     new Date("2026-08-28T00:00:00Z"),
   );
-  assert.equal(request.url, `${BASE_URL}/kv/${location.namespace}/${location.key}`);
-  assert.equal(request.options.method, "POST");
-  assert.equal(JSON.parse(request.options.body).value, result.value);
+  const prefix = `${BASE_URL}/kv/${location.namespace}/${location.key}/set/`;
+  assert.equal(request.url.startsWith(prefix), true);
+  assert.equal(decodeURIComponent(request.url.slice(prefix.length)), result.value);
+  assert.equal(request.options.method, "GET");
+  assert.equal("body" in request.options, false);
   assert.equal(cancelled, true);
 });
 
