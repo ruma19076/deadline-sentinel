@@ -16,6 +16,7 @@ import { pathToFileURL } from "node:url";
 
 export const BASE_URL = "https://technocore.chat";
 export const ROOM = "lobby";
+export const PROFILE_URL = "https://github.com/ruma19076/deadline-sentinel";
 
 const PRIVATE_KEY_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
 const PUBLIC_KEY_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
@@ -24,6 +25,7 @@ const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvw
 const INVISIBLE_CATEGORIES = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Zl}\p{Zp}]/gu;
 const DID_PATTERN = /^did:key:z6Mk[1-9A-HJ-NP-Za-km-z]{44}$/;
 const VERSION_PATTERN = /^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/;
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
 function fail(message) {
   throw new Error(message);
@@ -108,8 +110,42 @@ export function parseOpenApi(document) {
   return { version, pathCount };
 }
 
+export function parseAgentManifest(document) {
+  if (!document || typeof document !== "object" || Array.isArray(document)) {
+    fail("agent manifest response must be an object");
+  }
+  if (document.schema_version !== "0.1") fail("unexpected agent manifest schema");
+  if (document.name !== "technocore-chat" || document.url !== BASE_URL) {
+    fail("unexpected agent manifest identity");
+  }
+  if (typeof document.version !== "string" || !VERSION_PATTERN.test(document.version)) {
+    fail("unexpected agent manifest version");
+  }
+  if (
+    document.trust?.content_is_untrusted !== true ||
+    document.trust?.durable !== false ||
+    document.trust?.world_writable !== true
+  ) {
+    fail("agent manifest trust boundary changed");
+  }
+  const limits = document.limits;
+  const boundedInteger = (value, min, max, label) => {
+    if (!Number.isSafeInteger(value) || value < min || value > max) {
+      fail(`agent manifest ${label} is outside the safety bounds`);
+    }
+    return value;
+  };
+  return {
+    version: document.version,
+    readsPerMinute: boundedInteger(limits?.reads_per_minute_per_ip, 1, 100_000, "read limit"),
+    writesPerMinute: boundedInteger(limits?.writes_per_minute_per_ip, 1, 100_000, "write limit"),
+    retentionSeconds: boundedInteger(limits?.retention_seconds, 3_600, 31_536_000, "retention"),
+    duplicateSeconds: boundedInteger(limits?.duplicate_filter_seconds, 0, 86_400, "duplicate window"),
+  };
+}
+
 async function fixedFetch(fetchImpl, path, maxBytes) {
-  const allowed = new Set(["/healthz", "/openapi.json", "/llms.txt"]);
+  const allowed = new Set(["/healthz", "/openapi.json", "/llms.txt", "/.well-known/agent.json"]);
   if (!allowed.has(path)) fail("network access outside the fixed probe allow-list is blocked");
   const url = new URL(path, BASE_URL);
   if (url.origin !== BASE_URL) fail("unexpected probe origin");
@@ -117,7 +153,7 @@ async function fixedFetch(fetchImpl, path, maxBytes) {
     method: "GET",
     redirect: "error",
     headers: { accept: path.endsWith(".json") ? "application/json" : "text/plain" },
-    signal: AbortSignal.timeout(12_000),
+    signal: AbortSignal.timeout(30_000),
   });
   if (!response.ok) fail(`${path} returned HTTP ${response.status}`);
   const declared = Number(response.headers.get("content-length") || 0);
@@ -128,10 +164,11 @@ async function fixedFetch(fetchImpl, path, maxBytes) {
 }
 
 export async function probe(fetchImpl = fetch) {
-  const [healthBytes, openApiBytes, manualBytes] = await Promise.all([
+  const [healthBytes, openApiBytes, manualBytes, manifestBytes] = await Promise.all([
     fixedFetch(fetchImpl, "/healthz", 256),
     fixedFetch(fetchImpl, "/openapi.json", 2_000_000),
     fixedFetch(fetchImpl, "/llms.txt", 100_000),
+    fixedFetch(fetchImpl, "/.well-known/agent.json", 100_000),
   ]);
   const health = healthBytes.toString("utf8").trim();
   if (!/^ok(?:\s|$)/i.test(health)) fail("health endpoint did not return ok");
@@ -143,12 +180,28 @@ export async function probe(fetchImpl = fetch) {
     fail("OpenAPI response is not valid JSON");
   }
   const parsed = parseOpenApi(openApi);
+  let manifest;
+  try {
+    manifest = JSON.parse(manifestBytes.toString("utf8"));
+  } catch {
+    fail("agent manifest response is not valid JSON");
+  }
+  const parsedManifest = parseAgentManifest(manifest);
+  if (parsedManifest.version !== parsed.version) {
+    fail("OpenAPI and agent manifest versions disagree");
+  }
   const manualSha256 = createHash("sha256").update(manualBytes).digest("hex");
+  const manifestSha256 = createHash("sha256").update(manifestBytes).digest("hex");
   return {
     health: "ok",
     version: parsed.version,
     pathCount: parsed.pathCount,
     manualSha256,
+    manifestSha256,
+    readsPerMinute: parsedManifest.readsPerMinute,
+    writesPerMinute: parsedManifest.writesPerMinute,
+    retentionSeconds: parsedManifest.retentionSeconds,
+    duplicateSeconds: parsedManifest.duplicateSeconds,
   };
 }
 
@@ -163,11 +216,62 @@ export function buildContribution(snapshot, now = new Date()) {
   if (typeof snapshot.manualSha256 !== "string" || !/^[0-9a-f]{64}$/.test(snapshot.manualSha256)) {
     fail("invalid manual digest");
   }
+  if (
+    typeof snapshot.manifestSha256 !== "string" ||
+    !/^[0-9a-f]{64}$/.test(snapshot.manifestSha256)
+  ) {
+    fail("invalid agent manifest digest");
+  }
+  for (const [label, value] of [
+    ["read limit", snapshot.readsPerMinute],
+    ["write limit", snapshot.writesPerMinute],
+    ["retention", snapshot.retentionSeconds],
+    ["duplicate window", snapshot.duplicateSeconds],
+  ]) {
+    if (!Number.isSafeInteger(value) || value < 0) fail(`invalid snapshot ${label}`);
+  }
   const timestamp = now.toISOString().replace(/\.\d{3}Z$/, "Z");
   return sweep(
     `semi40 conformance ${timestamp} | technocore-chat v${snapshot.version} | health ok | ` +
-      `OpenAPI ${snapshot.pathCount} paths | llms sha256 ${snapshot.manualSha256.slice(0, 16)} | ` +
+      `OpenAPI ${snapshot.pathCount} paths | spec llms ${snapshot.manualSha256.slice(0, 16)} ` +
+      `agent ${snapshot.manifestSha256.slice(0, 16)} | enforced limits ` +
+      `${snapshot.readsPerMinute}r/${snapshot.writesPerMinute}w min; ` +
+      `retention ${snapshot.retentionSeconds}s; dupe ${snapshot.duplicateSeconds}s | ` +
       "deterministic probe: fixed official endpoints only; no room content or LLM",
+  );
+}
+
+export function jstDay(now = new Date()) {
+  if (!(now instanceof Date) || Number.isNaN(now.getTime())) fail("invalid activity date");
+  return new Date(now.getTime() + JST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+export function dailyNonce(now = new Date()) {
+  const day = jstDay(now);
+  return String(Date.parse(`${day}T00:00:00Z`) - JST_OFFSET_MS);
+}
+
+export function didNoteLocation(did) {
+  if (typeof did !== "string" || !DID_PATTERN.test(did)) fail("invalid DID profile key");
+  const fingerprint = createHash("sha256").update(did, "utf8").digest("hex").slice(0, 16);
+  return { namespace: `did-${fingerprint.slice(0, 2)}`, key: fingerprint.slice(2) };
+}
+
+export function buildDidProfile(did, proof, now = new Date()) {
+  didNoteLocation(did);
+  if (!proof || typeof proof !== "object") fail("DID profile proof is missing");
+  if (!/^[0-9]{1,19}$/.test(String(proof.nonce))) fail("invalid DID profile proof nonce");
+  if (typeof proof.sig !== "string" || !/^[A-Za-z0-9_-]{86}$/.test(proof.sig)) {
+    fail("invalid DID profile proof signature");
+  }
+  const contributionText = sweep(proof.text);
+  const activitySha256 = createHash("sha256").update(contributionText, "utf8").digest("hex");
+  const proofText = Buffer.from(contributionText, "utf8").toString("base64url");
+  return sweep(
+    `${did} profile:${PROFILE_URL} agent:semi40-conformance-v1 room:${ROOM} cadence:daily ` +
+      `last_seen:${jstDay(now)} activity_sha256:${activitySha256} ` +
+      `proof_nonce:${proof.nonce} proof_sig:${proof.sig} proof_text_b64:${proofText}`,
+    8192,
   );
 }
 
@@ -238,8 +342,14 @@ async function classifyRefusal(response, maxBytes = 2048) {
   return classifyRefusalText(diagnostic);
 }
 
-export async function postContribution(seedHex, text, fetchImpl = fetch, now = () => Date.now()) {
-  let nonce = String(now());
+export async function postContribution(
+  seedHex,
+  text,
+  fetchImpl = fetch,
+  now = () => Date.now(),
+  options = {},
+) {
+  const nonce = String(options.nonce ?? now());
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const envelope = signMessage(seedHex, ROOM, nonce, text);
     const response = await fetchImpl(`${BASE_URL}/r/${ROOM}`, {
@@ -251,23 +361,43 @@ export async function postContribution(seedHex, text, fetchImpl = fetch, now = (
     });
     if (response.status === 200) {
       await discardBody(response);
-      return { status: 200, did: envelope.did, nonce };
+      return { status: 200, did: envelope.did, nonce, sig: envelope.sig, text: envelope.text };
     }
     if (response.status === 429 && attempt === 0) {
       const retryAfter = Number(response.headers.get("retry-after") || 1);
       await discardBody(response);
       const seconds = Number.isFinite(retryAfter) ? Math.min(15, Math.max(1, retryAfter)) : 1;
       await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
-      nonce = String(Math.max(Number(nonce) + 1, now()));
       continue;
     }
     const classification = await classifyRefusal(response);
+    if (options.allowNonceRejection === true && response.status === 400 && classification === "nonce rejected") {
+      return { status: 400, did: envelope.did, nonce, accepted: false, reason: "nonce-rejected" };
+    }
     fail(
       `signed post was refused with HTTP ${response.status} (${classification}); ` +
         "no automatic content retry",
     );
   }
   fail("signed post did not complete");
+}
+
+export async function refreshDidProfile(did, proof, fetchImpl = fetch, now = new Date()) {
+  const { namespace, key } = didNoteLocation(did);
+  const value = buildDidProfile(did, proof, now);
+  const response = await fetchImpl(`${BASE_URL}/kv/${namespace}/${key}`, {
+    method: "POST",
+    redirect: "error",
+    headers: { "content-type": "application/json", accept: "text/plain" },
+    body: JSON.stringify({ value }),
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (response.status !== 200) {
+    await discardBody(response);
+    fail(`DID profile note refresh returned HTTP ${response.status}`);
+  }
+  await discardBody(response);
+  return { namespace, key, value };
 }
 
 async function main() {
@@ -282,13 +412,29 @@ async function main() {
     process.stdout.write(`${didFromSeed(seed)}\n`);
     return;
   }
-  if (command !== "contribute") fail("usage: node agent.mjs probe|did|contribute");
+  if (!["contribute", "contribute-daily"].includes(command)) {
+    fail("usage: node agent.mjs probe|did|contribute|contribute-daily");
+  }
   if (process.env.TECHNOCORE_ENABLED !== "true") fail("kill switch is off; no post was made");
 
   const snapshot = await probe();
   const text = buildContribution(snapshot);
-  const result = await postContribution(seed, text);
+  const daily = command === "contribute-daily";
+  const result = await postContribution(seed, text, fetch, () => Date.now(), {
+    nonce: daily ? dailyNonce() : undefined,
+    allowNonceRejection: daily,
+  });
+  if (result.status !== 200) {
+    process.stdout.write("daily nonce was rejected; this run made no signed post\n");
+    return;
+  }
   process.stdout.write(`signed contribution accepted for ${result.did}\n`);
+  try {
+    await refreshDidProfile(result.did, result);
+    process.stdout.write("official-convention DID profile note refreshed\n");
+  } catch (error) {
+    process.stderr.write(`technocore guard: optional DID profile note was not refreshed (${error.message})\n`);
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

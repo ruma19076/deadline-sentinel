@@ -2,8 +2,14 @@ name: Technocore safe contributor
 
 on:
   schedule:
-    # 06:17 JST daily. One useful signed snapshot per day avoids bursty or spam-like activity.
+    # Four delayed chances: one deterministic JST-day nonce permits at most one accepted post.
     - cron: "17 21 * * *"
+    - cron: "17 22 * * *"
+    - cron: "17 23 * * *"
+    - cron: "17 0 * * *"
+  workflow_run:
+    workflows: ["tests"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       live_post:
@@ -17,15 +23,23 @@ permissions:
 
 concurrency:
   group: technocore-safe-contributor
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   contribute:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Check out the pinned repository revision
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -40,7 +54,10 @@ jobs:
         run: node technocore_guard/agent.mjs probe
 
       - name: Publish one signed conformance snapshot
-        if: github.event_name == 'schedule' || inputs.live_post == true
+        if: >-
+          github.event_name == 'schedule' ||
+          github.event_name == 'workflow_run' ||
+          inputs.live_post == true
         env:
           TECHNOCORE_ENABLED: ${{ vars.TECHNOCORE_ENABLED }}
           TECHNOCORE_SIGN_SEED: ${{ secrets.TECHNOCORE_SIGN_SEED }}
@@ -54,4 +71,8 @@ jobs:
             exit 1
           fi
           echo "::add-mask::$TECHNOCORE_SIGN_SEED"
-          node technocore_guard/agent.mjs contribute
+          mode=contribute
+          if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then
+            mode=contribute-daily
+          fi
+          node technocore_guard/agent.mjs "$mode"
