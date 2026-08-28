@@ -35,7 +35,7 @@ const SNAPSHOT = {
   duplicateSeconds: 60,
 };
 
-test("four delayed schedule chances still enforce one daily signed slot", async () => {
+test("four delayed schedule chances claim one GitHub-side daily slot before posting", async () => {
   const workflow = await readFile(
     new URL("../.github/workflows/technocore-contributor.yml", import.meta.url),
     "utf8",
@@ -44,9 +44,14 @@ test("four delayed schedule chances still enforce one daily signed slot", async 
 
   assert.deepEqual(scheduledCrons, ["17 21 * * *", "17 22 * * *", "17 23 * * *", "17 0 * * *"]);
   assert.match(workflow, /^permissions:\n  contents: read$/m);
-  assert.match(workflow, /github\.event\.workflow_run\.event == 'push'/);
-  assert.match(workflow, /mode=contribute-daily/);
-  assert.match(workflow, /node technocore_guard\/agent\.mjs "\$mode"/);
+  assert.doesNotMatch(workflow, /^  workflow_run:/m);
+  assert.match(workflow, /actions\/cache\/restore@0057852bfaa89a56745cba8c7296529d2fc39830/);
+  assert.match(workflow, /actions\/cache\/save@0057852bfaa89a56745cba8c7296529d2fc39830/);
+  assert.match(workflow, /node technocore_guard\/agent\.mjs contribute-daily/);
+  assert.ok(
+    workflow.indexOf("Save the daily activity claim before posting") <
+      workflow.indexOf("Publish one signed conformance snapshot"),
+  );
 });
 
 test("DID and signature match the official Ed25519 lane", () => {

@@ -2,14 +2,11 @@ name: Technocore safe contributor
 
 on:
   schedule:
-    # Four delayed chances: one deterministic JST-day nonce permits at most one accepted post.
+    # Four delayed chances; a GitHub-side daily claim is saved before any live post attempt.
     - cron: "17 21 * * *"
     - cron: "17 22 * * *"
     - cron: "17 23 * * *"
     - cron: "17 0 * * *"
-  workflow_run:
-    workflows: ["tests"]
-    types: [completed]
   workflow_dispatch:
     inputs:
       live_post:
@@ -27,11 +24,7 @@ concurrency:
 
 jobs:
   contribute:
-    if: >-
-      github.event_name != 'workflow_run' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main')
+    if: github.event_name == 'schedule' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -53,11 +46,50 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.live_post != true
         run: node technocore_guard/agent.mjs probe
 
+      - name: Preflight the live activity endpoints
+        if: github.event_name == 'schedule' || inputs.live_post == true
+        run: node technocore_guard/agent.mjs probe
+
+      - name: Resolve the JST activity day
+        id: activity_day
+        if: github.event_name == 'schedule' || inputs.live_post == true
+        run: echo "day=$(date -u -d '+9 hours' +%F)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the daily activity claim
+        id: daily_claim
+        if: github.event_name == 'schedule' || inputs.live_post == true
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .technocore-state/${{ steps.activity_day.outputs.day }}
+          key: technocore-daily-v1-${{ steps.activity_day.outputs.day }}
+
+      - name: Prepare the daily activity claim
+        if: >-
+          (github.event_name == 'schedule' || inputs.live_post == true) &&
+          steps.daily_claim.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ".technocore-state/${{ steps.activity_day.outputs.day }}"
+          printf 'claimed-before-post\n' > ".technocore-state/${{ steps.activity_day.outputs.day }}/claim"
+
+      - name: Save the daily activity claim before posting
+        if: >-
+          (github.event_name == 'schedule' || inputs.live_post == true) &&
+          steps.daily_claim.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .technocore-state/${{ steps.activity_day.outputs.day }}
+          key: technocore-daily-v1-${{ steps.activity_day.outputs.day }}
+
+      - name: Report an already-claimed day
+        if: >-
+          (github.event_name == 'schedule' || inputs.live_post == true) &&
+          steps.daily_claim.outputs.cache-hit == 'true'
+        run: echo "The JST activity day was already claimed; no post was attempted."
+
       - name: Publish one signed conformance snapshot
         if: >-
-          github.event_name == 'schedule' ||
-          github.event_name == 'workflow_run' ||
-          inputs.live_post == true
+          (github.event_name == 'schedule' || inputs.live_post == true) &&
+          steps.daily_claim.outputs.cache-hit != 'true'
         env:
           TECHNOCORE_ENABLED: ${{ vars.TECHNOCORE_ENABLED }}
           TECHNOCORE_SIGN_SEED: ${{ secrets.TECHNOCORE_SIGN_SEED }}
@@ -71,8 +103,4 @@ jobs:
             exit 1
           fi
           echo "::add-mask::$TECHNOCORE_SIGN_SEED"
-          mode=contribute
-          if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then
-            mode=contribute-daily
-          fi
-          node technocore_guard/agent.mjs "$mode"
+          node technocore_guard/agent.mjs contribute-daily
