@@ -35,14 +35,16 @@ const SNAPSHOT = {
   duplicateSeconds: 60,
 };
 
-test("four delayed schedule chances claim one GitHub-side daily slot before posting", async () => {
+test("scheduled posting stays disabled while manual runs retain the daily safety claim", async () => {
   const workflow = await readFile(
     new URL("../.github/workflows/technocore-contributor.yml", import.meta.url),
     "utf8",
   );
   const scheduledCrons = [...workflow.matchAll(/^\s*- cron:\s*"([^"]+)"\s*$/gm)].map((match) => match[1]);
 
-  assert.deepEqual(scheduledCrons, ["17 21 * * *", "17 22 * * *", "17 23 * * *", "17 0 * * *"]);
+  assert.deepEqual(scheduledCrons, []);
+  assert.doesNotMatch(workflow, /^  schedule:/m);
+  assert.match(workflow, /^  workflow_dispatch:/m);
   assert.match(workflow, /^permissions:\n  contents: read$/m);
   assert.doesNotMatch(workflow, /^  workflow_run:/m);
   assert.match(workflow, /actions\/cache\/restore@0057852bfaa89a56745cba8c7296529d2fc39830/);
