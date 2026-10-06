@@ -1,12 +1,6 @@
 name: Technocore safe contributor
 
 on:
-  schedule:
-    # Four delayed chances; a GitHub-side daily claim is saved before any live post attempt.
-    - cron: "17 21 * * *"
-    - cron: "17 22 * * *"
-    - cron: "17 23 * * *"
-    - cron: "17 0 * * *"
   workflow_dispatch:
     inputs:
       live_post:
